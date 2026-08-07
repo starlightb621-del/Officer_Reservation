@@ -194,14 +194,28 @@
 
             const t = translations[lang];
 
+            // 데이터 유효성 검증 및 정제 함수
+            const sanitizeRequests = (dataArray) => {
+                if (!Array.isArray(dataArray)) return [];
+                return dataArray.filter(item => 
+                    item && 
+                    typeof item === 'object' && 
+                    item.id && 
+                    String(item.id).trim() !== '' &&
+                    item.name && 
+                    String(item.name).trim() !== ''
+                );
+            };
+
             const fetchRequestsFromBackend = useCallback(async () => {
                 try {
                     const res = await fetch(`${gasWebhookUrl}?action=get`);
                     if (res.ok) {
                         const data = await res.json();
                         if (Array.isArray(data)) {
-                            setRequests(data);
-                            localStorage.setItem('wos_requests_v3', JSON.stringify(data));
+                            const cleanData = sanitizeRequests(data);
+                            setRequests(cleanData);
+                            localStorage.setItem('wos_requests_v3', JSON.stringify(cleanData));
                         }
                     }
                 } catch (err) {
@@ -217,7 +231,8 @@
             useEffect(() => {
                 if (daysData.length > 0) {
                     setRequests(prevRequests => {
-                        const updated = prevRequests.map(req => {
+                        const sanitized = sanitizeRequests(prevRequests);
+                        const updated = sanitized.map(req => {
                             let isFilledInSheet = false;
                             for (const day of daysData) {
                                 if (day.title === req.dateTitle) {
@@ -347,11 +362,16 @@
             }, []);
 
             const convertTime = (utcTimeString) => {
+                if (!utcTimeString) return "00:00";
                 if (timeZoneMode === 'utc') return utcTimeString;
                 try {
-                    const [hourStr, minStr] = utcTimeString.split(':');
+                    const parts = String(utcTimeString).split(':');
+                    if (parts.length < 2) return utcTimeString;
+                    const hourStr = parts[0];
+                    const minStr = parts[1];
                     const d = new Date();
                     d.setUTCHours(parseInt(hourStr, 10), parseInt(minStr || 0, 10), 0, 0);
+                    if (isNaN(d.getTime())) return utcTimeString;
                     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
                 } catch (e) {
                     return utcTimeString;
@@ -415,7 +435,7 @@
                 const inputPw = prompt(t.passwordPrompt);
                 if (inputPw === null) return;
                 if (inputPw === '1953') {
-                    const updatedRequests = requests.filter(r => String(r.id) !== String(reqId));
+                    const updatedRequests = sanitizeRequests(requests).filter(r => String(r.id) !== String(reqId));
                     setRequests(updatedRequests);
                     localStorage.setItem('wos_requests_v3', JSON.stringify(updatedRequests));
 
@@ -437,7 +457,10 @@
                 }
             };
 
-            const filteredRequests = requests.filter(req => {
+            // 유효한 데이터만 산출하여 표시
+            const validRequests = sanitizeRequests(requests);
+
+            const filteredRequests = validRequests.filter(req => {
                 if (statusCategoryFilter === '전체') return true;
                 return req.category === statusCategoryFilter;
             });
