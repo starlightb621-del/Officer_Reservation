@@ -185,15 +185,33 @@
 
             const [requests, setRequests] = useState([]);
 
-            // GAS 또는 시트에서 신청 목록 불러오기 (GET 요청 또는 로컬 동기화 연동)
+            // GAS 또는 시트에서 신청 목록 불러오기 (GET 요청 연동 수정)
             const fetchRequestsFromBackend = async () => {
                 try {
                     const res = await fetch(gasWebhookUrl);
                     if (res.ok) {
                         const data = await res.json();
+                        console.log("GAS Response Data:", data);
                         if (Array.isArray(data)) {
-                            setRequests(data);
-                            localStorage.setItem('wos_requests_v3', JSON.stringify(data));
+                            // 만약 GAS가 단순 2차원 배열(CSV 형태 row)을 리턴한다면 객체로 변환
+                            const formattedData = data.map(item => {
+                                if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+                                    return item; // 이미 객체 형태인 경우
+                                }
+                                // 배열 형태인 경우 (예: [id, alliance, name, category, time, status, dateTitle])
+                                return {
+                                    id: item[0] || Date.now(),
+                                    alliance: item[1] || '',
+                                    name: item[2] || '',
+                                    category: item[3] || '건설',
+                                    time: item[4] || '00:00',
+                                    status: item[5] || '처리중',
+                                    dateTitle: item[6] || 'DAY 5 건설'
+                                };
+                            }).filter(req => req.name && req.name.trim() !== "");
+
+                            setRequests(formattedData);
+                            localStorage.setItem('wos_requests_v3', JSON.stringify(formattedData));
                             return;
                         }
                     }
