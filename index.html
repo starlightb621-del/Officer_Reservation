@@ -35,10 +35,7 @@
                 loading: "구글 시트 데이터를 불러오는 중...",
                 error: "데이터를 불러오는 중 오류가 발생했습니다. 샘플 데이터를 표시합니다.",
                 notice: "각 연맹의 R4, R5에게 신청해주세요. 다른 작업자와 겹칠 수 있으니 작성하기 전에 새로고침을 충분히 해주세요.",
-                reserveBtn: "📅 예약 신청하기",
                 statusBtn: "📋 신청 현황 보기",
-                adminLogin: "🔐 관리자 모드",
-                adminLogout: "🔓 관리자 해제",
                 modalReserveTitle: "관직 예약 신청",
                 modalStatusTitle: "예약 신청 현황",
                 alliance: "연맹명",
@@ -52,8 +49,6 @@
                 customAlliance: "직접 입력 연맹명",
                 selectCategory: "분류 선택",
                 selectTime: "시간 선택",
-                adminPasswordPrompt: "관리자 비밀번호를 입력하세요 (기본: 1234):",
-                adminWrongPassword: "비밀번호가 틀렸습니다.",
                 requiredField: "모든 항목을 입력해주세요.",
                 allCategory: "전체",
                 construction: "건설",
@@ -70,10 +65,7 @@
                 loading: "Loading Google Sheet data...",
                 error: "Failed to load data. Showing sample data.",
                 notice: "Please apply to R4, R5 of each alliance. Refresh before working to avoid overlaps.",
-                reserveBtn: "📅 Request Booking",
                 statusBtn: "📋 View Requests",
-                adminLogin: "🔐 Admin Mode",
-                adminLogout: "🔓 Exit Admin",
                 modalReserveTitle: "Request Schedule",
                 modalStatusTitle: "Reservation Requests",
                 alliance: "Alliance",
@@ -87,8 +79,6 @@
                 customAlliance: "Custom Alliance Name",
                 selectCategory: "Select Category",
                 selectTime: "Select Time",
-                adminPasswordPrompt: "Enter admin password (default: 1234):",
-                adminWrongPassword: "Incorrect password.",
                 requiredField: "Please fill in all fields.",
                 allCategory: "All",
                 construction: "Construction",
@@ -105,10 +95,7 @@
                 loading: "正在加载谷歌表格数据...",
                 error: "加载数据失败，显示示例数据。",
                 notice: "请向各联盟的R4、R5申请。操作前请多刷新以防重叠。",
-                reserveBtn: "📅 申请预约",
                 statusBtn: "📋 查看申请状态",
-                adminLogin: "🔐 管理员模式",
-                adminLogout: "🔓 退出管理员",
                 modalReserveTitle: "提交预约申请",
                 modalStatusTitle: "预约申请列表",
                 alliance: "联盟",
@@ -122,8 +109,6 @@
                 customAlliance: "自定义联盟名称",
                 selectCategory: "选择分类",
                 selectTime: "选择时间",
-                adminPasswordPrompt: "请输入管理员密码 (默认: 1234):",
-                adminWrongPassword: "密码错误。",
                 requiredField: "请填写所有字段。",
                 allCategory: "全部",
                 construction: "建设",
@@ -140,10 +125,7 @@
                 loading: "スプレッドシートの読み込み中...",
                 error: "データの読み込みに失敗しました。サンプルを表示します。",
                 notice: "各同盟のR4、R5にご申請ください。重複を防ぐため、事前に十分更新してください。",
-                reserveBtn: "📅 予約申請する",
                 statusBtn: "📋 申請状況を見る",
-                adminLogin: "🔐 管理者モード",
-                adminLogout: "🔓 管理者解除",
                 modalReserveTitle: "官職予約申請",
                 modalStatusTitle: "予約申請一覧",
                 alliance: "同盟",
@@ -157,8 +139,6 @@
                 customAlliance: "カスタム同盟名",
                 selectCategory: "分類を選択",
                 selectTime: "時間を選択",
-                adminPasswordPrompt: "管理者パスワードを入力してください (初期: 1234):",
-                adminWrongPassword: "パスワードが間違っています。",
                 requiredField: "すべての項目を入力してください。",
                 allCategory: "すべて",
                 construction: "建設",
@@ -178,7 +158,6 @@
 
             const [isReserveModalOpen, setIsReserveModalOpen] = useState(false);
             const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-            const [isAdmin, setIsAdmin] = useState(false);
 
             const [statusCategoryFilter, setStatusCategoryFilter] = useState('전체');
 
@@ -190,11 +169,31 @@
 
             const [requests, setRequests] = useState(() => {
                 const saved = localStorage.getItem('wos_requests');
-                return saved ? JSON.parse(saved) : [
-                    { id: 1, alliance: 'TNT', name: '하얀악마', category: '건설', time: '09:30', status: '처리중', dateTitle: 'DAY 5 건설' },
-                    { id: 2, alliance: 'BOW', name: 'TeleYoshi 요시', category: '연구', time: '00:00', status: '처리완료', dateTitle: 'DAY 5 연구' }
-                ];
+                return saved ? JSON.parse(saved) : [];
             });
+
+            useEffect(() => {
+                if (daysData.length > 0) {
+                    setRequests(prevRequests => {
+                        return prevRequests.map(req => {
+                            let isFilledInSheet = false;
+                            for (const day of daysData) {
+                                if (day.title === req.dateTitle) {
+                                    const foundSlot = day.slots.find(s => s.utcTime === req.time);
+                                    if (foundSlot && foundSlot.name && foundSlot.name.trim() !== "") {
+                                        isFilledInSheet = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            return {
+                                ...req,
+                                status: isFilledInSheet ? '처리완료' : '처리중'
+                            };
+                        });
+                    });
+                }
+            }, [daysData]);
 
             useEffect(() => {
                 localStorage.setItem('wos_requests', JSON.stringify(requests));
@@ -321,32 +320,6 @@
                 }
             };
 
-            const handleAdminToggle = () => {
-                if (isAdmin) {
-                    setIsAdmin(false);
-                } else {
-                    const pwd = prompt(t.adminPasswordPrompt);
-                    if (pwd === "1234") {
-                        setIsAdmin(true);
-                    } else if (pwd !== null) {
-                        alert(t.adminWrongPassword);
-                    }
-                }
-            };
-
-            const handleOpenGeneralReserveModal = () => {
-                const currentDayTitle = daysData[selectedDay]?.title || 'DAY 5 건설';
-                let defaultCategory = "건설";
-                if (currentDayTitle.includes("연구")) defaultCategory = "연구";
-                if (currentDayTitle.includes("훈련")) defaultCategory = "훈련";
-
-                setFormCategory(defaultCategory);
-                setFormTime(daysData[selectedDay]?.slots[0]?.utcTime || "00:00");
-                setFormName('');
-                setFormCustomAlliance('');
-                setIsReserveModalOpen(true);
-            };
-
             const handleSlotReserveClick = (slot) => {
                 const currentDayTitle = daysData[selectedDay]?.title || 'DAY 5 건설';
                 let defaultCategory = "건설";
@@ -385,17 +358,6 @@
                 alert("예약 신청이 성공적으로 접수되었습니다.");
             };
 
-            const toggleStatus = (id) => {
-                if (!isAdmin) return;
-                setRequests(requests.map(req => {
-                    if (req.id === id) {
-                        const nextStatus = req.status === '처리중' ? '처리완료' : '처리중';
-                        return { ...req, status: nextStatus };
-                    }
-                    return req;
-                }));
-            };
-
             const filteredRequests = requests.filter(req => {
                 if (statusCategoryFilter === '전체') return true;
                 return req.category === statusCategoryFilter;
@@ -432,15 +394,6 @@
                                     </button>
                                 ))}
                             </div>
-
-                            <button
-                                onClick={handleAdminToggle}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
-                                    isAdmin ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                                }`}
-                            >
-                                {isAdmin ? t.adminLogout : t.adminLogin}
-                            </button>
                         </div>
                     </header>
 
@@ -450,12 +403,6 @@
                             {t.notice}
                         </div>
                         <div className="flex space-x-2 shrink-0">
-                            <button
-                                onClick={handleOpenGeneralReserveModal}
-                                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center space-x-1"
-                            >
-                                <span>{t.reserveBtn}</span>
-                            </button>
                             <button
                                 onClick={() => setIsStatusModalOpen(true)}
                                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center space-x-1"
@@ -650,11 +597,6 @@
                                         <span>📋</span>
                                         <span>{t.modalStatusTitle}</span>
                                     </h3>
-                                    {isAdmin && (
-                                        <span className="text-[11px] bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-1 rounded-full">
-                                            관리자 권한 활성화됨
-                                        </span>
-                                    )}
                                 </div>
 
                                 <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl mb-4">
@@ -721,14 +663,6 @@
                                                         }`}>
                                                             {req.status}
                                                         </span>
-                                                        {isAdmin && (
-                                                            <button
-                                                                onClick={() => toggleStatus(req.id)}
-                                                                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-[11px] font-semibold text-slate-700 hover:bg-slate-100 shadow-sm transition-all"
-                                                            >
-                                                                상태변경
-                                                            </button>
-                                                        )}
                                                     </div>
                                                 </div>
                                             );
