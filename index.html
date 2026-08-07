@@ -28,6 +28,27 @@
         // 구글 앱스 스크립트(GAS) Web App URL
         const gasWebhookUrl = 'https://script.google.com/macros/s/AKfycbzxREUCSyZdEkZGDsWTxUhRY-o1f5uKXznDEgVljYgWPTS21UqIPcfdvtMxYIP22myS/exec';
 
+        // 시간을 24시간 형식(HH:mm)으로 일관되게 정규화하는 헬퍼 함수
+        const normalizeTime = (timeStr) => {
+            if (!timeStr) return "00:00";
+            let str = String(timeStr).trim();
+            if (str.includes(':')) {
+                const parts = str.split(':');
+                const h = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10);
+                const validH = isNaN(h) ? 0 : ((h % 24) + 24) % 24;
+                const validM = isNaN(m) ? 0 : ((m % 60) + 60) % 60;
+                return `${String(validH).padStart(2, '0')}:${String(validM).padStart(2, '0')}`;
+            }
+            const num = parseFloat(str);
+            if (!isNaN(num)) {
+                const hours = Math.floor(num) % 24;
+                const minutes = (num % 1) >= 0.5 ? 30 : 0;
+                return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+            }
+            return "00:00";
+        };
+
         const translations = {
             ko: {
                 title: "WOS 관직 예약 현황",
@@ -234,9 +255,10 @@
                         const sanitized = sanitizeRequests(prevRequests);
                         const updated = sanitized.map(req => {
                             let isFilledInSheet = false;
+                            const reqNormTime = normalizeTime(req.time);
                             for (const day of daysData) {
                                 if (day.title === req.dateTitle) {
-                                    const foundSlot = day.slots.find(s => s.utcTime === req.time);
+                                    const foundSlot = day.slots.find(s => normalizeTime(s.utcTime) === reqNormTime);
                                     if (foundSlot && foundSlot.name && foundSlot.name.trim() !== "") {
                                         isFilledInSheet = true;
                                         break;
@@ -254,17 +276,7 @@
                 }
             }, [daysData]);
 
-            const formatSlotTime = (val) => {
-                if (!val) return "00:00";
-                if (val.includes(':')) return val.padStart(5, '0');
-                const num = parseFloat(val);
-                if (!isNaN(num)) {
-                    const hours = Math.floor(num);
-                    const minutes = (num % 1) === 0.5 ? '30' : '00';
-                    return `${String(hours).padStart(2, '0')}:${minutes}`;
-                }
-                return val;
-            };
+            const formatSlotTime = (val) => normalizeTime(val);
 
             const loadSampleData = () => {
                 setDaysData([
@@ -284,7 +296,7 @@
                         ]
                     },
                     {
-                        title: "DAY 5 연구",
+                        title: "DAY 2 연구",
                         slots: [
                             { utcTime: "00:00", name: "[BOV]TeleYoshi 요시_X" },
                             { utcTime: "00:30", name: "[BOV]nabijan" },
@@ -292,7 +304,7 @@
                         ]
                     },
                     {
-                        title: "DAY 5 훈련",
+                        title: "DAY 4 훈련",
                         slots: [
                             { utcTime: "00:00", name: "[TNT]전투대원1" },
                             { utcTime: "01:00", name: "[BOW]훈련병" }
@@ -307,7 +319,7 @@
                 let currentSlots = [];
                 let dayIndex = 0;
 
-                const dayNamesMapping = ["DAY 5 건설", "DAY 5 연구", "DAY 5 훈련"];
+                const dayNamesMapping = ["DAY 5 건설", "DAY 2 연구", "DAY 4 훈련"];
 
                 for (let i = 0; i < lines.length; i++) {
                     const row = lines[i];
@@ -362,19 +374,21 @@
             }, []);
 
             const convertTime = (utcTimeString) => {
-                if (!utcTimeString) return "00:00";
-                if (timeZoneMode === 'utc') return utcTimeString;
+                const normTime = normalizeTime(utcTimeString);
+                if (timeZoneMode === 'utc') return normTime;
                 try {
-                    const parts = String(utcTimeString).split(':');
-                    if (parts.length < 2) return utcTimeString;
-                    const hourStr = parts[0];
-                    const minStr = parts[1];
-                    const d = new Date();
-                    d.setUTCHours(parseInt(hourStr, 10), parseInt(minStr || 0, 10), 0, 0);
-                    if (isNaN(d.getTime())) return utcTimeString;
-                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                    const [hourStr, minStr] = normTime.split(':');
+                    const utcH = parseInt(hourStr, 10);
+                    const utcM = parseInt(minStr || '0', 10);
+                    
+                    const now = new Date();
+                    const utcDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), utcH, utcM, 0));
+                    
+                    const localH = String(utcDate.getHours()).padStart(2, '0');
+                    const localM = String(utcDate.getMinutes()).padStart(2, '0');
+                    return `${localH}:${localM}`;
                 } catch (e) {
-                    return utcTimeString;
+                    return normTime;
                 }
             };
 
@@ -385,7 +399,7 @@
                 if (currentDayTitle.includes("훈련")) defaultCategory = "훈련";
 
                 setFormCategory(defaultCategory);
-                setFormTime(slot.utcTime);
+                setFormTime(normalizeTime(slot.utcTime));
                 setFormName('');
                 setFormCustomAlliance('');
                 setIsReserveModalOpen(true);
