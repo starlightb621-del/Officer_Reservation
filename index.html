@@ -183,22 +183,25 @@
             // 사용자가 제공한 Google Apps Script Web App URL
             const gasWebhookUrl = 'https://script.google.com/macros/s/AKfycbzxREUCSyZdEkZGDsWTxUhRY-o1f5uKXznDEgVljYgWPTS21UqIPcfdvtMxYIP22myS/exec';
 
+            // 신청 내역 저장 구글 시트 직접 조회 URL
+            const applySheetCsvUrl = 'https://docs.google.com/spreadsheets/d/18fOadKYBVm_Nv3K3q4OiEaB1UY9Y_AwYQEOzb3tXZKs/export?format=csv&gid=0';
+
             const [requests, setRequests] = useState([]);
 
-            // GAS 또는 시트에서 신청 목록 불러오기 (GET 요청 연동 수정)
+            // GAS 또는 신청 구글 시트 CSV에서 직접 신청 목록 불러오기
             const fetchRequestsFromBackend = async () => {
+                let loadedRequests = [];
+
+                // 1차 시도: Google Apps Script Web App 연동
                 try {
                     const res = await fetch(gasWebhookUrl);
                     if (res.ok) {
                         const data = await res.json();
-                        console.log("GAS Response Data:", data);
-                        if (Array.isArray(data)) {
-                            // 만약 GAS가 단순 2차원 배열(CSV 형태 row)을 리턴한다면 객체로 변환
-                            const formattedData = data.map(item => {
+                        if (Array.isArray(data) && data.length > 0) {
+                            loadedRequests = data.map(item => {
                                 if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-                                    return item; // 이미 객체 형태인 경우
+                                    return item;
                                 }
-                                // 배열 형태인 경우 (예: [id, alliance, name, category, time, status, dateTitle])
                                 return {
                                     id: item[0] || Date.now(),
                                     alliance: item[1] || '',
@@ -209,20 +212,56 @@
                                     dateTitle: item[6] || 'DAY 5 건설'
                                 };
                             }).filter(req => req.name && req.name.trim() !== "");
-
-                            setRequests(formattedData);
-                            localStorage.setItem('wos_requests_v3', JSON.stringify(formattedData));
-                            return;
                         }
                     }
                 } catch (e) {
-                    console.error("Failed to fetch from GAS, fallback to local storage:", e);
+                    console.warn("GAS fetch failed, fallback to direct sheet CSV fetch:", e);
                 }
 
-                // Fallback to local storage if network fails
-                const saved = localStorage.getItem('wos_requests_v3');
-                if (saved) {
-                    setRequests(JSON.parse(saved));
+                // 2차 시도: GAS 응답이 없거나 실패할 경우, 신청용 구글 시트 CSV 직접 파싱
+                if (loadedRequests.length === 0) {
+                    try {
+                        const res = await fetch(applySheetCsvUrl);
+                        if (res.ok) {
+                            const text = await res.text();
+                            const lines = text.split('\n').map(l => l.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
+                            
+                            const csvRequests = lines.map((row, idx) => {
+                                // 닉네임(C열)이 있는 경우 valid한 데이터로 판단
+                                if (row.length >= 3 && row[2] && row[2].trim() !== "" && row[2] !== "닉네임") {
+                                    return {
+                                        id: row[0] || (Date.now() + idx),
+                                        alliance: row[1] || '',
+                                        name: row[2] || '',
+                                        category: row[3] || '건설',
+                                        time: row[4] || '00:00',
+                                        status: row[5] || '처리중',
+                                        dateTitle: row[6] || 'DAY 5 건설'
+                                    };
+                                }
+                                return null;
+                            }).filter(Boolean);
+
+                            if (csvRequests.length > 0) {
+                                loadedRequests = csvRequests;
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Direct sheet CSV fetch failed:", e);
+                    }
+                }
+
+                // 3차 시도: 로컬 스토리지 보존 데이터
+                if (loadedRequests.length === 0) {
+                    const saved = localStorage.getItem('wos_requests_v3');
+                    if (saved) {
+                        loadedRequests = JSON.parse(saved);
+                    }
+                }
+
+                setRequests(loadedRequests);
+                if (loadedRequests.length > 0) {
+                    localStorage.setItem('wos_requests_v3', JSON.stringify(loadedRequests));
                 }
             };
 
