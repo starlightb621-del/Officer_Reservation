@@ -44,6 +44,9 @@
                 time: "시간 선택",
                 submit: "신청 완료",
                 cancel: "취소",
+                cancelBtn: "취소하기",
+                passwordPrompt: "예약 취소 비밀번호를 입력하세요:",
+                passwordError: "비밀번호가 일치하지 않습니다.",
                 processing: "처리중",
                 completed: "처리완료",
                 customAlliance: "직접 입력 연맹명",
@@ -74,6 +77,9 @@
                 time: "Time Slot",
                 submit: "Submit",
                 cancel: "Cancel",
+                cancelBtn: "Cancel Request",
+                passwordPrompt: "Enter cancellation password:",
+                passwordError: "Incorrect password.",
                 processing: "Processing",
                 completed: "Completed",
                 customAlliance: "Custom Alliance Name",
@@ -104,6 +110,9 @@
                 time: "时间",
                 submit: "提交",
                 cancel: "取消",
+                cancelBtn: "取消申请",
+                passwordPrompt: "请输入取消密码：",
+                passwordError: "密码错误。",
                 processing: "处理中",
                 completed: "已完成",
                 customAlliance: "自定义联盟名称",
@@ -134,6 +143,9 @@
                 time: "時間選択",
                 submit: "申請する",
                 cancel: "キャンセル",
+                cancelBtn: "キャンセル",
+                passwordPrompt: "キャンセルパスワードを入力してください：",
+                passwordError: "パスワードが正しくありません。",
                 processing: "処理中",
                 completed: "完了",
                 customAlliance: "カスタム同盟名",
@@ -358,6 +370,17 @@
                 setFormName('');
                 setFormCustomAlliance('');
                 alert("예약 신청이 성공적으로 접수되었습니다.");
+            };
+
+            const handleCancelRequest = (reqId) => {
+                const inputPw = prompt(t.passwordPrompt);
+                if (inputPw === null) return; // 취소 누름
+                if (inputPw === '1953') {
+                    setRequests(requests.filter(r => r.id !== reqId));
+                    alert("예약 신청이 삭제되었습니다.");
+                } else {
+                    alert(t.passwordError);
+                }
             };
 
             const filteredRequests = requests.filter(req => {
@@ -665,6 +688,12 @@
                                                         }`}>
                                                             {req.status}
                                                         </span>
+                                                        <button
+                                                            onClick={() => handleCancelRequest(req.id)}
+                                                            className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm"
+                                                        >
+                                                            {t.cancelBtn}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             );
