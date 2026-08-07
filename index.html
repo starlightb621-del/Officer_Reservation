@@ -30,22 +30,53 @@
 
         // 시간을 24시간 형식(HH:mm)으로 일관되게 정규화하는 헬퍼 함수
         const normalizeTime = (timeStr) => {
-            if (!timeStr) return "00:00";
+            if (timeStr === null || timeStr === undefined || timeStr === '') return "00:00";
             let str = String(timeStr).trim();
-            if (str.includes(':')) {
-                const parts = str.split(':');
-                const h = parseInt(parts[0], 10);
-                const m = parseInt(parts[1], 10);
-                const validH = isNaN(h) ? 0 : ((h % 24) + 24) % 24;
-                const validM = isNaN(m) ? 0 : ((m % 60) + 60) % 60;
+
+            // 1. ISO 문자열(T) 포함 시 시간 부분만 추출 ("1899-12-30T02:00:00.000Z" -> "02:00:00")
+            if (str.includes('T')) {
+                const timePart = str.split('T')[1];
+                if (timePart) {
+                    str = timePart.split('.')[0].replace('Z', '');
+                }
+            }
+
+            // 2. 정규식을 통해 HH:mm 또는 H:mm 문자열 정밀 추출 (연도 파싱 오작동 방지)
+            const timeRegex = /(?:^|\s|T)(\d{1,2}):(\d{2})/;
+            const match = str.match(timeRegex) || str.match(/(\d{1,2}):(\d{2})/);
+
+            if (match) {
+                let h = parseInt(match[1], 10);
+                let m = parseInt(match[2], 10);
+
+                // 구글 시트 역사적 시차 오차(:02 -> :00, :32 -> :30) 보정을 위해 30분 단위 반올림 처리
+                let totalMinutes = h * 60 + m;
+                let roundedMinutes = Math.round(totalMinutes / 30) * 30;
+                let validH = (Math.floor(roundedMinutes / 60) % 24 + 24) % 24;
+                let validM = roundedMinutes % 60;
+
                 return `${String(validH).padStart(2, '0')}:${String(validM).padStart(2, '0')}`;
             }
+
+            // 3. 엑셀/구글시트 소수점 시간 형식 처리 (예: 0.5 -> 12:00)
             const num = parseFloat(str);
             if (!isNaN(num)) {
-                const hours = Math.floor(num) % 24;
-                const minutes = (num % 1) >= 0.5 ? 30 : 0;
-                return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+                let h = 0, m = 0;
+                if (num >= 0 && num < 1) {
+                    const totalMinutes = Math.round(num * 24 * 60);
+                    h = Math.floor(totalMinutes / 60) % 24;
+                    m = totalMinutes % 60;
+                } else {
+                    h = Math.floor(num) % 24;
+                    m = (num % 1) >= 0.5 ? 30 : 0;
+                }
+                let totalMinutes = h * 60 + m;
+                let roundedMinutes = Math.round(totalMinutes / 30) * 30;
+                let validH = (Math.floor(roundedMinutes / 60) % 24 + 24) % 24;
+                let validM = roundedMinutes % 60;
+                return `${String(validH).padStart(2, '0')}:${String(validM).padStart(2, '0')}`;
             }
+
             return "00:00";
         };
 
@@ -225,7 +256,10 @@
                     String(item.id).trim() !== '' &&
                     item.name && 
                     String(item.name).trim() !== ''
-                );
+                ).map(item => ({
+                    ...item,
+                    time: normalizeTime(item.time)
+                }));
             };
 
             const fetchRequestsFromBackend = useCallback(async () => {
@@ -296,7 +330,7 @@
                         ]
                     },
                     {
-                        title: "DAY 2 연구",
+                        title: "DAY 5 연구",
                         slots: [
                             { utcTime: "00:00", name: "[BOV]TeleYoshi 요시_X" },
                             { utcTime: "00:30", name: "[BOV]nabijan" },
@@ -304,7 +338,7 @@
                         ]
                     },
                     {
-                        title: "DAY 4 훈련",
+                        title: "DAY 5 훈련",
                         slots: [
                             { utcTime: "00:00", name: "[TNT]전투대원1" },
                             { utcTime: "01:00", name: "[BOW]훈련병" }
@@ -319,7 +353,7 @@
                 let currentSlots = [];
                 let dayIndex = 0;
 
-                const dayNamesMapping = ["DAY 5 건설", "DAY 2 연구", "DAY 4 훈련"];
+                const dayNamesMapping = ["DAY 5 건설", "DAY 5 연구", "DAY 5 훈련"];
 
                 for (let i = 0; i < lines.length; i++) {
                     const row = lines[i];
