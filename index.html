@@ -34,7 +34,7 @@
                 empty: "비어 있음",
                 loading: "구글 시트 데이터를 불러오는 중...",
                 error: "데이터를 불러오는 중 오류가 발생했습니다. 샘플 데이터를 표시합니다.",
-                notice: "각 연맹의 R4, R5에게 신청해주세요. 빈 슬롯의 '예약하기'를 통해 간편하게 신청을 접수할 수 있습니다.",
+                notice: "1. 빈 슬롯의 '예약하기'를 통해 신청 정보를 입력하세요.\n2. 접수된 내역은 '신청 현황 보기'에서 확인 가능합니다.\n3. R4/R5 관리자가 구글 시트에 최종 반영하면 자동으로 '처리완료'로 변경됩니다.",
                 statusBtn: "📋 신청 현황 보기",
                 modalReserveTitle: "관직 예약 신청",
                 modalStatusTitle: "예약 신청 현황",
@@ -67,7 +67,7 @@
                 empty: "Available",
                 loading: "Loading Google Sheet data...",
                 error: "Failed to load data. Showing sample data.",
-                notice: "Please apply to R4, R5 of each alliance. You can easily request via 'Book' on empty slots.",
+                notice: "1. Click 'Book' on empty slots to request.\n2. Check requests via 'View Requests'.\n3. Status updates to 'Completed' once R4/R5 updates the Google Sheet.",
                 statusBtn: "📋 View Requests",
                 modalReserveTitle: "Request Schedule",
                 modalStatusTitle: "Reservation Requests",
@@ -100,7 +100,7 @@
                 empty: "空闲",
                 loading: "正在加载谷歌表格数据...",
                 error: "加载数据失败，显示示例数据。",
-                notice: "请向各联盟的R4、R5申请。可通过空闲格的“预约”按钮快速提交申请。",
+                notice: "1. 点击空闲格的“预约”提交申请。\n2. 可在“查看申请状态”中确认。\n3. 管理员更新谷歌表格后将自动变更为“已完成”。",
                 statusBtn: "📋 查看申请状态",
                 modalReserveTitle: "提交预约申请",
                 modalStatusTitle: "预约申请列表",
@@ -133,7 +133,7 @@
                 empty: "空き",
                 loading: "スプレッドシートの読み込み中...",
                 error: "データの読み込みに失敗しました。サンプルを表示します。",
-                notice: "各同盟のR4、R5にご申請ください。空き枠の「予約する」から簡単にご申請いただけます。",
+                notice: "1. 空き枠の「予約する」から申請します。\n2. 「申請状況を見る」で確認できます。\n3. 管理者がシートを更新すると自動で「完了」に変わります。",
                 statusBtn: "📋 申請状況を見る",
                 modalReserveTitle: "官職予約申請",
                 modalStatusTitle: "予約申請一覧",
@@ -160,20 +160,6 @@
             }
         };
 
-        const normalizeTime = (timeStr) => {
-            if (timeStr === null || timeStr === undefined || timeStr === '') return "00:00";
-            let str = String(timeStr).trim();
-            const timeRegex = /(?:^|\s|T)(\d{1,2}):(\d{2})/;
-            const match = str.match(timeRegex) || str.match(/(\d{1,2}):(\d{2})/);
-
-            if (match) {
-                let h = parseInt(match[1], 10);
-                let m = parseInt(match[2], 10);
-                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            }
-            return str;
-        };
-
         function App() {
             const [lang, setLang] = useState('ko');
             const [timeZoneMode, setTimeZoneMode] = useState('local');
@@ -184,7 +170,6 @@
 
             const [isReserveModalOpen, setIsReserveModalOpen] = useState(false);
             const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-            const [isInfoModalOpen, setIsInfoModalOpen] = useState(true);
 
             const [statusCategoryFilter, setStatusCategoryFilter] = useState('전체');
 
@@ -195,7 +180,7 @@
             const [formTime, setFormTime] = useState('');
 
             const [requests, setRequests] = useState(() => {
-                const saved = localStorage.getItem('wos_requests_v3');
+                const saved = localStorage.getItem('wos_requests_v2');
                 return saved ? JSON.parse(saved) : [];
             });
 
@@ -223,7 +208,7 @@
             }, [daysData]);
 
             useEffect(() => {
-                localStorage.setItem('wos_requests_v3', JSON.stringify(requests));
+                localStorage.setItem('wos_requests_v2', JSON.stringify(requests));
             }, [requests]);
 
             const t = translations[lang];
@@ -289,15 +274,15 @@
             };
 
             const formatSlotTime = (val) => {
-                if (!val) return "00:00";
-                if (val.includes(':')) return normalizeTime(val);
+                if (!val) return "0:00";
+                if (val.includes(':')) return val.padStart(5, '0');
                 const num = parseFloat(val);
                 if (!isNaN(num)) {
                     const hours = Math.floor(num);
                     const minutes = (num % 1) === 0.5 ? '30' : '00';
                     return `${String(hours).padStart(2, '0')}:${minutes}`;
                 }
-                return normalizeTime(val);
+                return val;
             };
 
             const loadSampleData = () => {
@@ -382,7 +367,7 @@
                 setIsReserveModalOpen(false);
                 setFormName('');
                 setFormCustomAlliance('');
-                alert("예약 신청이 성공적으로 접수되었습니다.");
+                alert("예약 신청이 접수되었습니다. R4/R5가 구글 시트에 반영하면 '처리완료' 상태로 변경됩니다.");
             };
 
             const handleCancelRequest = (reqId) => {
@@ -436,8 +421,8 @@
                     </header>
 
                     <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-xl mb-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div className="text-xs text-amber-800 leading-relaxed">
-                            <p className="font-semibold mb-1">📢 Notice / 안내사항</p>
+                        <div className="text-xs text-amber-800 leading-relaxed whitespace-pre-line">
+                            <p className="font-semibold mb-1">📢 Notice / 이용 안내</p>
                             {t.notice}
                         </div>
                         <div className="flex space-x-2 shrink-0">
@@ -526,7 +511,7 @@
                                                     </span>
                                                     <button
                                                         onClick={() => handleSlotReserveClick(slot)}
-                                                        className="w-full py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center justify-center space-x-1"
+                                                        className="w-full py-1.5 px-3 bg-white hover:bg-slate-100 border border-dashed border-slate-300 rounded-lg text-xs font-bold text-slate-600 shadow-sm transition-all flex items-center justify-center space-x-1"
                                                     >
                                                         <span>{t.directReserveText}</span>
                                                     </button>
@@ -721,28 +706,6 @@
                                         닫기
                                     </button>
                                 </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 안내 팝업창 (페이지 진입 시 및 필요 시 표시) */}
-                    {isInfoModalOpen && (
-                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 text-center animate-fadeIn">
-                                <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
-                                    ℹ️
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-900 mb-2">공지사항</h3>
-                                <p className="text-sm text-slate-600 leading-relaxed mb-6">
-                                    현재 관직 예약 현황 확인만 가능합니다.<br/>
-                                    현 사이트에서 예약이 가능하도록 개선 중이며, 예약 신청은 R4에게 문의해주세요.
-                                </p>
-                                <button
-                                    onClick={() => setIsInfoModalOpen(false)}
-                                    className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold shadow-md transition-all"
-                                >
-                                    확인
-                                </button>
                             </div>
                         </div>
                     )}
