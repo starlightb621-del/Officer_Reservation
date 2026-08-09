@@ -23,7 +23,66 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        // 구글 앱스 스크립트(GAS) Web App URL
+        const gasWebhookUrl = 'https://script.google.com/macros/s/AKfycbyHwd9mBFPIMSfsxFkGlHa5XHGgIbh78S3WjzxBhY9dkCPfdKPtw7rNp2wD0lQtIc_5/exec';
+
+        // ★ [핵심 수정] 시간을 24시간 형식(HH:mm)으로 일관되게 정규화하는 헬퍼 함수
+        const normalizeTime = (timeStr) => {
+            if (timeStr === null || timeStr === undefined || timeStr === '') return "00:00";
+            let str = String(timeStr).trim().toUpperCase();
+
+            // 1. ISO 문자열(T) 포함 시 시간 부분만 추출 ("1899-12-30T14:30:00.000Z" -> "14:30:00")
+            if (str.includes('T')) {
+                const timePart = str.split('T')[1];
+                if (timePart) {
+                    str = timePart.split('.')[0].replace('Z', '');
+                }
+            }
+
+            // 2. 정규식 추출 (오전/오후, AM/PM 완벽 대응 - 시간 불일치 주 원인 해결)
+            // 매칭 예: "14:30", "2:30 PM", "02:30 AM", "오후 2:30", "오전 2:30", "PM 2:30"
+            const ampmRegex = /(오전|오후|AM|PM)?\s*(\d{1,2}):(\d{2})(?:\s*(AM|PM|오전|오후))?/i;
+            const match = str.match(ampmRegex);
+
+            if (match) {
+                let modifier = (match[1] || match[4] || "").toUpperCase();
+                let h = parseInt(match[2], 10);
+                let m = parseInt(match[3], 10);
+
+                let isPM = (modifier === '오후' || modifier === 'PM');
+                let isAM = (modifier === '오전' || modifier === 'AM');
+
+                // 오후 1시~11시인 경우 12시간을 더해 24시간제로 변환
+                if (isPM && h < 12) h += 12;
+                // 오전 12시(자정)인 경우 0시로 변환
+                if (isAM && h === 12) h = 0;
+
+                return `${String(h % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+            }
+
+            // 3. 구글 시트/엑셀 소수점 시간 형식 (예: 0.5 -> 12:00)
+            const num = parseFloat(str);
+            if (!isNaN(num) && !str.includes(':')) {
+                let h = 0, m = 0;
+                if (num >= 0 && num < 1) {
+                    const totalMinutes = Math.round(num * 24 * 60);
+                    h = Math.floor(totalMinutes / 60) % 24;
+                    m = totalMinutes % 60;
+                } else {
+                    h = Math.floor(num) % 24;
+                    m = (num % 1) >= 0.5 ? 30 : 0;
+                }
+                const totalM = h * 60 + m;
+                const roundedM = Math.round(totalM / 30) * 30; // 소수점 데이터는 30분 단위 보정
+                const finalH = Math.floor(roundedM / 60) % 24;
+                const finalMin = roundedM % 60;
+                return `${String(finalH).padStart(2, '0')}:${String(finalMin).padStart(2, '0')}`;
+            }
+
+            return "00:00";
+        };
 
         const translations = {
             ko: {
@@ -32,9 +91,9 @@
                 utc: "UTC 기준",
                 local: "현지 시간",
                 empty: "비어 있음",
-                loading: "구글 시트 데이터를 불러오는 중...",
+                loading: "데이터를 불러오는 중...",
                 error: "데이터를 불러오는 중 오류가 발생했습니다. 샘플 데이터를 표시합니다.",
-                notice: "1. 빈 슬롯의 '예약하기'를 통해 신청 정보를 입력하세요.\n2. 접수된 내역은 '신청 현황 보기'에서 확인 가능합니다.\n3. R4/R5 관리자가 구글 시트에 최종 반영하면 자동으로 '처리완료'로 변경됩니다.",
+                notice: "각 연맹의 R4, R5에게 신청해주세요. 최신 상태 유지를 위해 1분마다 자동 새로고침됩니다.",
                 statusBtn: "📋 신청 현황 보기",
                 modalReserveTitle: "관직 예약 신청",
                 modalStatusTitle: "예약 신청 현황",
@@ -65,9 +124,9 @@
                 utc: "UTC Time",
                 local: "Local Time",
                 empty: "Available",
-                loading: "Loading Google Sheet data...",
+                loading: "Loading data...",
                 error: "Failed to load data. Showing sample data.",
-                notice: "1. Click 'Book' on empty slots to request.\n2. Check requests via 'View Requests'.\n3. Status updates to 'Completed' once R4/R5 updates the Google Sheet.",
+                notice: "Apply via R4/R5. Auto-refreshes every 1 min to prevent overlaps.",
                 statusBtn: "📋 View Requests",
                 modalReserveTitle: "Request Schedule",
                 modalStatusTitle: "Reservation Requests",
@@ -98,9 +157,9 @@
                 utc: "UTC时间",
                 local: "本地时间",
                 empty: "空闲",
-                loading: "正在加载谷歌表格数据...",
+                loading: "正在加载数据...",
                 error: "加载数据失败，显示示例数据。",
-                notice: "1. 点击空闲格的“预约”提交申请。\n2. 可在“查看申请状态”中确认。\n3. 管理员更新谷歌表格后将自动变更为“已完成”。",
+                notice: "请向各联盟的R4、R5申请。每分钟自动刷新以防重叠。",
                 statusBtn: "📋 查看申请状态",
                 modalReserveTitle: "提交预约申请",
                 modalStatusTitle: "预约申请列表",
@@ -131,9 +190,9 @@
                 utc: "UTC時間",
                 local: "現地時間",
                 empty: "空き",
-                loading: "スプレッドシートの読み込み中...",
+                loading: "データの読み込み中...",
                 error: "データの読み込みに失敗しました。サンプルを表示します。",
-                notice: "1. 空き枠の「予約する」から申請します。\n2. 「申請状況を見る」で確認できます。\n3. 管理者がシートを更新すると自動で「完了」に変わります。",
+                notice: "各同盟のR4、R5にご申請ください。重複を防ぐため1分ごとに自動更新されます。",
                 statusBtn: "📋 申請状況を見る",
                 modalReserveTitle: "官職予約申請",
                 modalStatusTitle: "予約申請一覧",
@@ -170,7 +229,6 @@
 
             const [isReserveModalOpen, setIsReserveModalOpen] = useState(false);
             const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-
             const [statusCategoryFilter, setStatusCategoryFilter] = useState('전체');
 
             const [formAlliance, setFormAlliance] = useState('TNT');
@@ -179,66 +237,122 @@
             const [formCategory, setFormCategory] = useState('건설');
             const [formTime, setFormTime] = useState('');
 
+            // 로컬 스토리지 데이터 초기화 (버전을 v5로 올려 이전 잘못된 시간 캐시 방지)
             const [requests, setRequests] = useState(() => {
-                const saved = localStorage.getItem('wos_requests_v2');
-                return saved ? JSON.parse(saved) : [];
+                try {
+                    const saved = localStorage.getItem('wos_requests_v5');
+                    return saved ? JSON.parse(saved) : [];
+                } catch(e) {
+                    return [];
+                }
             });
 
+            const t = translations[lang];
+
+            const sanitizeRequests = (dataArray) => {
+                if (!Array.isArray(dataArray)) return [];
+                return dataArray.filter(item => 
+                    item && typeof item === 'object' && 
+                    item.id && String(item.id).trim() !== '' &&
+                    item.name && String(item.name).trim() !== ''
+                ).map(item => ({
+                    ...item,
+                    time: normalizeTime(item.time)
+                }));
+            };
+
+            const fetchRequestsFromBackend = useCallback(async () => {
+                try {
+                    const res = await fetch(`${gasWebhookUrl}?action=get`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (Array.isArray(data)) {
+                            const cleanData = sanitizeRequests(data);
+                            setRequests(cleanData);
+                            localStorage.setItem('wos_requests_v5', JSON.stringify(cleanData));
+                        }
+                    }
+                } catch (err) {
+                    console.log("GAS fetch sync skipped/failed:", err);
+                }
+            }, []);
+
+            // 1분마다 자동 갱신
+            useEffect(() => {
+                const intervalId = setInterval(() => {
+                    fetchSheetData();
+                    fetchRequestsFromBackend();
+                }, 60000);
+                return () => clearInterval(intervalId);
+            }, [fetchRequestsFromBackend]);
+
+            // 구글 시트 데이터 로드 시 처리상태 동기화
             useEffect(() => {
                 if (daysData.length > 0) {
                     setRequests(prevRequests => {
-                        return prevRequests.map(req => {
+                        const sanitized = sanitizeRequests(prevRequests);
+                        let isChanged = false;
+                        
+                        const updated = sanitized.map(req => {
                             let isFilledInSheet = false;
+                            const reqNormTime = normalizeTime(req.time);
+                            
                             for (const day of daysData) {
                                 if (day.title === req.dateTitle) {
-                                    const foundSlot = day.slots.find(s => s.utcTime === req.time);
+                                    const foundSlot = day.slots.find(s => normalizeTime(s.utcTime) === reqNormTime);
                                     if (foundSlot && foundSlot.name && foundSlot.name.trim() !== "") {
                                         isFilledInSheet = true;
                                         break;
                                     }
                                 }
                             }
-                            return {
-                                ...req,
-                                status: isFilledInSheet ? '처리완료' : '처리중'
-                            };
+                            
+                            const newStatus = isFilledInSheet ? '처리완료' : '처리중';
+                            if (req.status !== newStatus) {
+                                isChanged = true;
+                            }
+                            return { ...req, status: newStatus };
                         });
+
+                        if (isChanged) {
+                            localStorage.setItem('wos_requests_v5', JSON.stringify(updated));
+                            return updated;
+                        }
+                        return prevRequests;
                     });
                 }
             }, [daysData]);
 
-            useEffect(() => {
-                localStorage.setItem('wos_requests_v2', JSON.stringify(requests));
-            }, [requests]);
-
-            const t = translations[lang];
-
-            useEffect(() => {
-                async function fetchSheetData() {
-                    try {
-                        const sheetUrl = 'https://docs.google.com/spreadsheets/d/1FQ9nuNwRSr0wz7x5ha_FKU2WkZuUrhDmi7haiGkQrP4/export?format=csv&gid=0';
-                        const response = await fetch(sheetUrl);
-                        if (!response.ok) throw new Error('Network response was not ok');
-                        const csvText = await response.text();
-                        parseCSV(csvText);
-                        setLoading(false);
-                    } catch (err) {
-                        console.error(err);
-                        loadSampleData();
-                        setLoading(false);
-                        setError(true);
+            const loadSampleData = () => {
+                setDaysData([
+                    {
+                        title: "DAY 5 건설",
+                        slots: [
+                            { utcTime: "00:00", name: "[BOV]TeleYoshi 요시_X" },
+                            { utcTime: "00:30", name: "[BOV]nabijan" },
+                            { utcTime: "01:00", name: "[BOV]NG Slon 슬론" },
+                            { utcTime: "01:30", name: "" },
+                            { utcTime: "02:00", name: "" },
+                            { utcTime: "02:30", name: "[GOM]베베곰Bebe" }
+                        ]
+                    },
+                    {
+                        title: "DAY 2 연구",
+                        slots: [
+                            { utcTime: "00:00", name: "[BOV]TeleYoshi 요시_X" },
+                            { utcTime: "00:30", name: "[BOV]nabijan" },
+                            { utcTime: "01:00", name: "" }
+                        ]
                     }
-                }
-                fetchSheetData();
-            }, []);
+                ]);
+            };
 
             const parseCSV = (text) => {
                 const lines = text.split('\n').map(line => line.split(',').map(cell => cell.replace(/^"|"$/g, '').trim()));
                 let extractedDays = [];
                 let currentSlots = [];
                 let dayIndex = 0;
-
-                const dayNamesMapping = ["DAY 5 건설", "DAY 5 연구", "DAY 5 훈련"];
+                const dayNamesMapping = ["DAY 5 건설", "DAY 2 연구", "DAY 4 훈련"];
 
                 for (let i = 0; i < lines.length; i++) {
                     const row = lines[i];
@@ -252,12 +366,12 @@
                         }
                     }
 
-                    if (row.length >= 4 && !isNaN(row[0]) && row[0] !== "") {
-                        if (row[0] !== undefined && row[1] !== undefined) {
-                            currentSlots.push({ utcTime: formatSlotTime(row[0]), name: row[1] || "" });
-                        }
-                        if (row[2] !== undefined && row[3] !== undefined) {
-                            currentSlots.push({ utcTime: formatSlotTime(row[2]), name: row[3] || "" });
+                    const isTimeCell = (cell) => cell !== undefined && cell !== "" && (cell.includes(':') || !isNaN(parseFloat(cell)));
+
+                    if (row.length >= 2 && isTimeCell(row[0])) {
+                        currentSlots.push({ utcTime: normalizeTime(row[0]), name: row[1] || "" });
+                        if (row.length >= 4 && isTimeCell(row[2])) {
+                            currentSlots.push({ utcTime: normalizeTime(row[2]), name: row[3] || "" });
                         }
                     }
                 }
@@ -273,62 +387,46 @@
                 }
             };
 
-            const formatSlotTime = (val) => {
-                if (!val) return "0:00";
-                if (val.includes(':')) return val.padStart(5, '0');
-                const num = parseFloat(val);
-                if (!isNaN(num)) {
-                    const hours = Math.floor(num);
-                    const minutes = (num % 1) === 0.5 ? '30' : '00';
-                    return `${String(hours).padStart(2, '0')}:${minutes}`;
-                }
-                return val;
-            };
-
-            const loadSampleData = () => {
-                setDaysData([
-                    {
-                        title: "DAY 5 건설",
-                        slots: [
-                            { utcTime: "00:00", name: "[BOV]TeleYoshi 요시_X" },
-                            { utcTime: "00:30", name: "[BOV]nabijan" },
-                            { utcTime: "01:00", name: "[BOV]NG Slon 슬론" },
-                            { utcTime: "01:30", name: "" },
-                            { utcTime: "02:00", name: "" },
-                            { utcTime: "02:30", name: "[GOM]베베곰Bebe" },
-                            { utcTime: "03:00", name: "[GOM]수왕대군아빠곰" },
-                            { utcTime: "03:30", name: "[GOM]곰왕베베" },
-                            { utcTime: "04:00", name: "[GOM]Daniel 다니엘" },
-                            { utcTime: "06:00", name: "[BOV]토토 toto" }
-                        ]
-                    },
-                    {
-                        title: "DAY 5 연구",
-                        slots: [
-                            { utcTime: "00:00", name: "[BOV]TeleYoshi 요시_X" },
-                            { utcTime: "00:30", name: "[BOV]nabijan" },
-                            { utcTime: "01:00", name: "[GOM]alpha centauri" }
-                        ]
-                    },
-                    {
-                        title: "DAY 5 훈련",
-                        slots: [
-                            { utcTime: "00:00", name: "[TNT]전투대원1" },
-                            { utcTime: "01:00", name: "[BOW]훈련병" }
-                        ]
-                    }
-                ]);
-            };
-
-            const convertTime = (utcTimeString) => {
-                if (timeZoneMode === 'utc') return utcTimeString;
+            async function fetchSheetData() {
                 try {
-                    const [hourStr, minStr] = utcTimeString.split(':');
-                    const d = new Date();
-                    d.setUTCHours(parseInt(hourStr, 10), parseInt(minStr || 0, 10), 0, 0);
-                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                    const sheetUrl = 'https://docs.google.com/spreadsheets/d/1FQ9nuNwRSr0wz7x5ha_FKU2WkZuUrhDmi7haiGkQrP4/export?format=csv&gid=0';
+                    const response = await fetch(sheetUrl);
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const csvText = await response.text();
+                    parseCSV(csvText);
+                    setError(false);
+                } catch (err) {
+                    console.error("Sheet load error:", err);
+                    loadSampleData();
+                    setError(true);
+                } finally {
+                    setLoading(false);
+                }
+            }
+
+            useEffect(() => {
+                fetchSheetData();
+                fetchRequestsFromBackend();
+            }, []);
+
+            // 현지 시간(Local) 변환기 - 브라우저 접속자의 타임존을 기준으로 안전하게 변환
+            const convertTime = (utcTimeString) => {
+                const normTime = normalizeTime(utcTimeString);
+                if (timeZoneMode === 'utc') return normTime;
+                try {
+                    const [hourStr, minStr] = normTime.split(':');
+                    const utcH = parseInt(hourStr, 10);
+                    const utcM = parseInt(minStr || '0', 10);
+                    
+                    const now = new Date();
+                    // 당일 날짜를 기준으로 해당 UTC 시간을 주입하여 오프셋 계산
+                    const targetDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), utcH, utcM, 0));
+                    
+                    const localH = String(targetDate.getHours()).padStart(2, '0');
+                    const localM = String(targetDate.getMinutes()).padStart(2, '0');
+                    return `${localH}:${localM}`;
                 } catch (e) {
-                    return utcTimeString;
+                    return normTime;
                 }
             };
 
@@ -339,13 +437,13 @@
                 if (currentDayTitle.includes("훈련")) defaultCategory = "훈련";
 
                 setFormCategory(defaultCategory);
-                setFormTime(slot.utcTime);
+                setFormTime(normalizeTime(slot.utcTime));
                 setFormName('');
                 setFormCustomAlliance('');
                 setIsReserveModalOpen(true);
             };
 
-            const handleFormSubmit = (e) => {
+            const handleFormSubmit = async (e) => {
                 e.preventDefault();
                 const allianceName = formAlliance === '직접입력' ? formCustomAlliance : formAlliance;
                 if (!formName || !formTime || !allianceName) {
@@ -354,7 +452,7 @@
                 }
 
                 const newReq = {
-                    id: Date.now(),
+                    id: String(Date.now()),
                     alliance: allianceName,
                     name: formName,
                     category: formCategory,
@@ -363,25 +461,56 @@
                     dateTitle: daysData[selectedDay]?.title || 'DAY 5 건설'
                 };
 
-                setRequests([newReq, ...requests]);
+                const updated = [newReq, ...requests];
+                setRequests(updated);
+                localStorage.setItem('wos_requests_v5', JSON.stringify(updated));
                 setIsReserveModalOpen(false);
                 setFormName('');
                 setFormCustomAlliance('');
-                alert("예약 신청이 접수되었습니다. R4/R5가 구글 시트에 반영하면 '처리완료' 상태로 변경됩니다.");
+                alert("예약 신청이 성공적으로 접수되었습니다.");
+
+                try {
+                    await fetch(gasWebhookUrl, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'add', ...newReq })
+                    });
+                } catch (err) {
+                    console.error("GAS submit error:", err);
+                }
+
+                setTimeout(fetchRequestsFromBackend, 1500);
             };
 
-            const handleCancelRequest = (reqId) => {
+            const handleCancelRequest = async (reqId) => {
                 const inputPw = prompt(t.passwordPrompt);
                 if (inputPw === null) return;
                 if (inputPw === '1953') {
-                    setRequests(requests.filter(r => r.id !== reqId));
-                    alert("예약 신청이 삭제되었습니다.");
+                    const updatedRequests = sanitizeRequests(requests).filter(r => String(r.id) !== String(reqId));
+                    setRequests(updatedRequests);
+                    localStorage.setItem('wos_requests_v5', JSON.stringify(updatedRequests));
+                    alert("예약 신청이 삭제 처리되었습니다.");
+
+                    try {
+                        await fetch(gasWebhookUrl, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ action: 'delete', id: String(reqId) })
+                        });
+                    } catch (err) {
+                        console.error("GAS delete sync error:", err);
+                    }
+
+                    setTimeout(fetchRequestsFromBackend, 1500);
                 } else {
                     alert(t.passwordError);
                 }
             };
 
-            const filteredRequests = requests.filter(req => {
+            const validRequests = sanitizeRequests(requests);
+            const filteredRequests = validRequests.filter(req => {
                 if (statusCategoryFilter === '전체') return true;
                 return req.category === statusCategoryFilter;
             });
@@ -389,7 +518,7 @@
             const sortedRequests = [...filteredRequests].sort((a, b) => {
                 if (a.status === '처리중' && b.status !== '처리중') return -1;
                 if (a.status !== '처리중' && b.status === '처리중') return 1;
-                return b.id - a.id;
+                return Number(b.id) - Number(a.id);
             });
 
             return (
@@ -421,8 +550,8 @@
                     </header>
 
                     <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-xl mb-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div className="text-xs text-amber-800 leading-relaxed whitespace-pre-line">
-                            <p className="font-semibold mb-1">📢 Notice / 이용 안내</p>
+                        <div className="text-xs text-amber-800 leading-relaxed">
+                            <p className="font-semibold mb-1">📢 Notice / 안내사항</p>
                             {t.notice}
                         </div>
                         <div className="flex space-x-2 shrink-0">
@@ -528,7 +657,6 @@
                         </div>
                     )}
 
-                    {/* 예약 신청 모달 */}
                     {isReserveModalOpen && (
                         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                             <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-200">
@@ -611,7 +739,6 @@
                         </div>
                     )}
 
-                    {/* 신청 현황 모달 */}
                     {isStatusModalOpen && (
                         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                             <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6 border border-slate-200 max-h-[85vh] flex flex-col">
@@ -713,7 +840,9 @@
             );
         }
 
-        ReactDOM.render(<App />, document.getElementById('root'));
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
     </script>
 </body>
 </html>
